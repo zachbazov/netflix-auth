@@ -10,25 +10,26 @@ const userSchema = new Schema({
         required: true,
         unique: true,
         lowercase: true,
-        validate: [validator.isEmail],
+        validate: [validator.isEmail]
     },
     password: {
         type: String,
         required: true,
         minlength: 8,
-        select: false,
+        select: false
     },
     passwordChangedAt: {
         type: Date,
-        default: Date.now(),
+        default: Date.now()
     },
     role: {
         type: String,
         enum: ["admin", "user"],
-        default: "user",
+        default: "user"
     },
     passwordResetToken: String,
-    refreshToken: [String],
+    passwordResetExpirationPeriod: Date,
+    refreshToken: [String]
 });
 
 // MARK: - Document Middleware
@@ -62,11 +63,40 @@ userSchema.methods.correctPassword = async function (
     candidatePassword,
     userPassword
 ) {
-    return await bcrypt.compare(
-        candidatePassword,
-        userPassword
-    );
+    return await bcrypt.compare(candidatePassword, userPassword);
 };
+
+// Value JWT Timestamp for Password Changes
+userSchema.methods.changedPasswordAfter = function (jwtTimestamp) {
+    if (this.passwordChangedAt) {
+        const changedTimestamp = parseInt(
+            this.passwordChangedAt.getTime() / 1000,
+            10
+        );
+
+        return jwtTimestamp < changedTimestamp;
+    }
+
+    return false;
+};
+
+// Generate Password Reset Token
+userSchema.methods.generatePasswordResetToken = function () {
+    const resetToken = crypto.randomBytes(32).toString("hex");
+
+    this.passwordResetToken = crypto
+        .createHash("sha256")
+        .update(resetToken)
+        .digest("hex");
+
+    this.passwordResetExpirationPeriod = Date.now() + 10 * 60 * 1000;
+
+    return resetToken;
+};
+
+// MARK: - Improve Performance
+// userSchema.index({ name: 1 });
+// userSchema.index({ role: 1 });
 
 const User = mongoose.model("User", userSchema);
 

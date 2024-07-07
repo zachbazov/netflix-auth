@@ -40,17 +40,17 @@ class TokenService {
         );
     }
 
-    static signAccessToken(user) {
+    static signAccessToken(user, role) {
         return jwt.sign(
-            { email: user.email },
+            { email: user.email, role },
             process.env.ACCESS_TOKEN_SECRET,
             { expiresIn: accessTokenExpireTime }
         );
     }
 
-    static signRefreshToken(user) {
+    static signRefreshToken(user, role) {
         return jwt.sign(
-            { email: user.email },
+            { email: user.email, role },
             process.env.REFRESH_TOKEN_SECRET,
             { expiresIn: refreshTokenExpireTime }
         );
