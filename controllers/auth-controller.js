@@ -1,12 +1,18 @@
-const User = require("../models/User");
+// ------------------------------------------------------------
+// MARK: - MODULE INJECTION
+// ------------------------------------------------------------
 const jwt = require("jsonwebtoken");
+const User = require("../models/User");
 const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/AppError");
 const TokenService = require("../utils/TokenService");
-
+// ------------------------------------------------------------
+// MARK: - AUTH HANDLERS
+// ------------------------------------------------------------
+// SIGN IN HANDLER
+// ------------------------------
 const signIn = catchAsync(async (req, res, next) => {
     const cookies = req.cookies;
-
     const { email, password } = req.body;
 
     if (!email || !password) {
@@ -16,7 +22,10 @@ const signIn = catchAsync(async (req, res, next) => {
 
     const foundUser = await User.findOne({ email }).select("+password");
 
-    if (!foundUser) return res.sendStatus(401);
+    if (!foundUser) {
+        const error = new AppError("Unauthorized", 401);
+        return next(error);
+    }
 
     const match = await foundUser.correctPassword(
         password,
@@ -25,42 +34,47 @@ const signIn = catchAsync(async (req, res, next) => {
 
     if (match) {
         const role = foundUser.role;
-        // Reuse Detector
-        const accessToken = TokenService.signAccessToken(foundUser, role);
+        const accessToken = TokenService.signAccessToken(
+            foundUser,
+            foundUser.name,
+            role
+        );
         const newRefreshToken = TokenService.signRefreshToken(
             foundUser,
+            foundUser.name,
             role
         );
 
-        let newRefreshTokenArray = !cookies?.jwt
-            ? foundUser.refreshToken
-            : foundUser.refreshToken.filter((rt) => rt !== cookies.jwt);
+        let newRefreshTokenArray = foundUser.refreshToken;
+        if (newRefreshTokenArray.length >= 2) {
+            const oldRefreshToken = newRefreshTokenArray.shift();
+            await User.updateOne(
+                { email: foundUser.email },
+                { $pull: { refreshToken: oldRefreshToken } }
+            );
 
-        if (cookies?.jwt) {
-            const refreshToken = cookies.jwt;
-            const foundToken = await User.findOne({ refreshToken });
-
-            if (!foundToken) newRefreshTokenArray = [];
-
-            await TokenService.removeCookie(res);
+            if (cookies.refreshToken === oldRefreshToken) {
+                await TokenService.removeCookie(res);
+            }
         }
 
-        foundUser.refreshToken = [
-            ...newRefreshTokenArray,
-            newRefreshToken
-        ];
+        newRefreshTokenArray.push(newRefreshToken);
+        foundUser.refreshToken = newRefreshTokenArray;
 
         await foundUser.save();
-        await TokenService.setCookie(res, newRefreshToken);
+        await TokenService.setCookie(res, accessToken, newRefreshToken);
 
-        res.json({ role, accessToken });
+        res.json({ role, accessToken, refreshToken: newRefreshToken });
     } else {
-        res.sendStatus(401);
+        const error = new AppError("Unauthorized", 401);
+        return next(error);
     }
 });
-
+// ------------------------------
+// SIGN UP HANDLER
+// ------------------------------
 const signUp = catchAsync(async (req, res, next) => {
-    const { email, password } = req.body;
+    const { name, email, password } = req.body;
 
     if (!email || !password) {
         const error = new AppError("Invalid username or password.", 400);
@@ -72,7 +86,7 @@ const signUp = catchAsync(async (req, res, next) => {
     if (duplicate) return res.sendStatus(409);
 
     try {
-        const data = await User.create({ email, password });
+        const data = await User.create({ name, email, password });
 
         res.status(201).json({
             status: "success",
@@ -82,106 +96,98 @@ const signUp = catchAsync(async (req, res, next) => {
         res.status(500).json({ message: e.message });
     }
 });
-
+// ------------------------------
+// SIGN OUT HANDLER
+// ------------------------------
 const signOut = async (req, res) => {
-    const cookies = req.cookies;
-
-    if (!cookies?.jwt) return res.sendStatus(204);
-
-    const refreshToken = cookies.jwt;
-    const foundUser = await User.findOne({ refreshToken });
+    const refreshToken = req.body.refreshToken;
+    const decoded = jwt.decode(refreshToken);
+    const foundUser = await User.findOne({ email: decoded.email });
 
     if (!foundUser) {
         await TokenService.removeCookie(res);
-
-        return res.sendStatus(204);
+        return res.sendStatus(404);
     }
 
-    foundUser.refreshToken = foundUser.refreshToken.filter(
-        (rt) => rt !== refreshToken
+    const contains = await constainsValue(
+        foundUser.refreshToken,
+        refreshToken
     );
+
+    if (contains) deleteValue(foundUser.refreshToken, refreshToken);
 
     await foundUser.save();
     await TokenService.removeCookie(res);
 
-    return res.sendStatus(204);
+    return res.status(200).json({ message: "Signed out successfully." });
 };
-
+// ------------------------------
+// REFRESH TOKEN HANDLER
+// ------------------------------
 const signRefreshToken = async (req, res) => {
-    const cookies = req.cookies;
-
-    if (!cookies?.jwt) return res.sendStatus(401);
-
-    const refreshToken = cookies.jwt;
+    const refreshToken = req.body.refreshToken;
+    const decodedUser = jwt.decode(refreshToken);
 
     await TokenService.removeCookie(res);
 
-    const foundUser = await User.findOne({ refreshToken });
+    const foundUser = await User.findOne({ email: decodedUser.email });
 
     if (!foundUser) {
         TokenService.verifyTokenForReuse(res, refreshToken);
-
         return res.sendStatus(403);
     }
-
-    const newRefreshTokenArray = foundUser.refreshToken.filter(
-        (rt) => rt !== refreshToken
-    );
 
     jwt.verify(
         refreshToken,
         process.env.REFRESH_TOKEN_SECRET,
         async (err, decoded) => {
-            if (err) {
-                foundUser.refreshToken = [...newRefreshTokenArray];
-
-                await foundUser.save();
-            }
+            if (err) await TokenService.removeCookie(res);
 
             if (err || foundUser.email !== decoded.email)
                 return res.sendStatus(403);
 
             const role = foundUser.role;
             const accessToken = TokenService.signAccessToken(
-                decoded,
+                foundUser,
+                foundUser.name,
                 role
             );
             const newRefreshToken = TokenService.signRefreshToken(
-                decoded,
+                foundUser,
+                foundUser.name,
                 role
             );
 
-            foundUser.refreshToken = [
-                ...newRefreshTokenArray,
-                newRefreshToken
-            ];
+            let newRefreshTokenArray = foundUser.refreshToken;
+            if (newRefreshTokenArray.length >= 2) {
+                const oldRefreshToken = newRefreshTokenArray.shift();
+                await User.updateOne(
+                    { email: foundUser.email },
+                    { $pull: { refreshToken: oldRefreshToken } }
+                );
+
+                if (refreshToken === oldRefreshToken) {
+                    await TokenService.removeCookie(res);
+                }
+            }
+
+            newRefreshTokenArray.push(newRefreshToken);
+            foundUser.refreshToken = newRefreshTokenArray;
 
             await foundUser.save();
-            await TokenService.setCookie(res, newRefreshToken);
+            await TokenService.setCookie(
+                res,
+                accessToken,
+                newRefreshToken
+            );
 
-            res.json({ role, accessToken });
+            res.json({ role, accessToken, refreshToken: newRefreshToken });
         }
     );
 };
-
-const verifyToken = (req, res) => {
-    const authHeader = req.headers["authorization"];
-
-    if (!authHeader) return res.sendStatus(401);
-
-    const token = authHeader.split(" ")[1];
-
-    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
-        if (err) return res.sendStatus(403);
-
-        req.verifiedEmail = decoded.email;
-        req.verifiedRole = decoded.role;
-
-        next();
-    });
-};
-
-// Dispatch an Email for a forgotten password
+// ------------------------------
+// FORGOT PASSWORD HANDLER
+// ------------------------------
 const forgotPassword = catchAsync(async (req, res, next) => {
     const user = await User.findOne({
         email: req.body.email
@@ -227,8 +233,9 @@ const forgotPassword = catchAsync(async (req, res, next) => {
         return next(appError);
     }
 });
-
-// Request a new User password and reset it's token
+// ------------------------------
+// RESET PASSWORD HANDLER
+// ------------------------------
 const resetPassword = catchAsync(async (req, res, next) => {
     const hashedToken = crypto
         .createHash("sha256")
@@ -256,8 +263,9 @@ const resetPassword = catchAsync(async (req, res, next) => {
 
     dispatchSignToken(user, 200, req, res);
 });
-
-// Update User Password
+// ------------------------------
+// UPDATE PASSWORD HANDLER
+// ------------------------------
 const updatePassword = catchAsync(async (req, res, next) => {
     const user = await User.findById(req.user.id).select("+password");
 
@@ -280,13 +288,28 @@ const updatePassword = catchAsync(async (req, res, next) => {
 
     dispatchSignToken(user, 200, req, res);
 });
-
+// ------------------------------------------------------------
+// MARK: - PRIVATE METHODS
+// ------------------------------------------------------------
+const constainsValue = async (array, value) => {
+    return await array.includes(value);
+};
+const deleteValue = async (array, value) => {
+    const index = array.indexOf(value);
+    if (index !== -1) {
+        await array.splice(index, 1);
+        return true;
+    }
+    return false;
+};
+// ------------------------------------------------------------
+// MARK: - MODULE INJECTION
+// ------------------------------------------------------------
 module.exports = {
     signIn,
     signUp,
     signOut,
     signRefreshToken,
-    verifyToken,
     updatePassword,
     resetPassword,
     forgotPassword

@@ -1,17 +1,17 @@
 // ------------------------------------------------------------
 // MARK: - MODULE INJECTION
 // ------------------------------------------------------------
-const express = require("express");
-const router = express.Router();
+const allowedOrigins = require("../config/allowed-origins");
 // ------------------------------------------------------------
-// MARK: - ROUTE MOUNTING
+// MARK: - CREDENTIALS HANDLER
 // ------------------------------------------------------------
-router.get("/", (req, res) => {
-    res.status(200).render("index", {
-        title: "Home"
-    });
-});
+const credentials = (req, res, next) => {
+    const origin = req.headers.origin;
+    if (allowedOrigins.includes(origin))
+        res.header("Access-Control-Allow-Credentials", true);
+    next();
+};
 // ------------------------------------------------------------
 // MARK: - MODULE EXPORT
 // ------------------------------------------------------------
-module.exports = router;
+module.exports = credentials;

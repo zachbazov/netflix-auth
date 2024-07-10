@@ -1,27 +1,54 @@
+// ------------------------------------------------------------
+// MARK: - MODULE INJECTION
+// ------------------------------------------------------------
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
-
+// ------------------------------------------------------------
+// MARK: - PROPERTIES
+// ------------------------------------------------------------
 const accessTokenExpireTime = "12h";
 const refreshTokenExpireTime = "1d";
-
+// ------------------------------------------------------------
+// MARK: - CLASS DECLARATION
+// ------------------------------------------------------------
 class TokenService {
-    static async setCookie(res, refreshToken) {
-        res.cookie("jwt", refreshToken, {
+    // ------------------------------
+    // SET COOKIE HANDLER
+    // ------------------------------
+    static async setCookie(res, token, refreshToken) {
+        console.log("setCookie");
+        res.cookie("jwt", token, {
+            httpOnly: true,
+            sameSite: "None",
+            secure: true,
+            maxAge: 24 * 60 * 60 * 1000
+        });
+        res.cookie("refreshToken", refreshToken, {
             httpOnly: true,
             sameSite: "None",
             secure: true,
             maxAge: 24 * 60 * 60 * 1000
         });
     }
-
+    // ------------------------------
+    // REMOVE COOKIE HANDLER
+    // ------------------------------
     static async removeCookie(res) {
+        console.log("removeCookie");
         await res.clearCookie("jwt", {
             httpOnly: true,
             sameSite: "None",
             secure: true
         });
+        await res.clearCookie("refreshToken", {
+            httpOnly: true,
+            sameSite: "None",
+            secure: true
+        });
     }
-
+    // ------------------------------
+    // VERIFY TOKEN HANDLER
+    // ------------------------------
     static async verifyTokenForReuse(res, refreshToken) {
         jwt.verify(
             refreshToken,
@@ -29,32 +56,58 @@ class TokenService {
             async (err, decoded) => {
                 if (err) return res.sendStatus(403);
 
-                const refreshedUser = await User.findOne({
+                const foundUser = await User.findOne({
                     email: decoded.email
                 });
 
-                refreshedUser.refreshToken = [];
+                const contains = await containsValue(
+                    foundUser.refreshToken,
+                    refreshToken
+                );
 
-                await refreshedUser.save();
+                if (contains)
+                    deleteValue(foundUser.refreshToken, refreshToken);
             }
         );
     }
-
-    static signAccessToken(user, role) {
+    // ------------------------------
+    // SIGN ACCESS TOKEN HANDLER
+    // ------------------------------
+    static signAccessToken(user, name, role) {
         return jwt.sign(
-            { email: user.email, role },
+            { email: user.email, name, role },
             process.env.ACCESS_TOKEN_SECRET,
             { expiresIn: accessTokenExpireTime }
         );
     }
-
-    static signRefreshToken(user, role) {
-        return jwt.sign(
-            { email: user.email, role },
+    // ------------------------------
+    // SIGN REFRESH TOKEN HANDLER
+    // ------------------------------
+    static signRefreshToken(user, name, role) {
+        const t = jwt.sign(
+            { email: user.email, name, role },
             process.env.REFRESH_TOKEN_SECRET,
             { expiresIn: refreshTokenExpireTime }
         );
+        console.log("t", t);
+        return t;
     }
 }
-
+// ------------------------------------------------------------
+// MARK: - PRIVATE METHODS
+// ------------------------------------------------------------
+const constainsValue = async (array, value) => {
+    return await array.includes(value);
+};
+const deleteValue = async (array, value) => {
+    const index = array.indexOf(value);
+    if (index !== -1) {
+        await array.splice(index, 1);
+        return true;
+    }
+    return false;
+};
+// ------------------------------------------------------------
+// MARK: - MODULE EXPORT
+// ------------------------------------------------------------
 module.exports = TokenService;

@@ -1,41 +1,54 @@
+// ------------------------------------------------------------
+// MARK: - MODULE INJECTION
+// ------------------------------------------------------------
 const AppError = require("../utils/AppError");
-
+// ------------------------------------------------------------
+// MARK: - ERROR HANDLERS
+// ------------------------------------------------------------
+// (DB) CASTING ERROR
+// ------------------------------
 const dbCastErrorResponse = (err) => {
     const message = `Invalid ${err.path}: ${err.value}.`;
     const appError = new AppError(message, 400); // Bad Request - 400
-
     return appError;
 };
-
+// ------------------------------
+// (DB) VALIDATION ERROR
+// ------------------------------
 const dbValidationErrorResponse = (err) => {
     const message = `Invalid ${err.path}: ${err.value}.`;
     const appError = new AppError(message, 400); // Bad Request - 400
 
     return appError;
 };
-
+// ------------------------------
+// (DB) DUPLICATION ERROR
+// ------------------------------
 const dbDuplicateFieldsErrorResponse = (err) => {
     const value = err.errmsg.match(/(["'])(\\?.)*?\1/);
     const message = `Duplicate field value: ${value}. Please use another value.`;
     const appError = new AppError(message, 400); // Bad Request - 400
-
     return appError;
 };
-
-const dbJWTTokenErrorResponse = (err) => {
+// ------------------------------
+// (DB) INVALID JWT ERROR
+// ------------------------------
+const dbJWTErrorResponse = (err) => {
     const message = "Invalid token. Please sign-in again.";
     const appError = new AppError(message, 401);
-
     return appError;
 };
-
-const dbJWTTokenExpiredErrorResponse = (err) => {
+// ------------------------------
+// (DB) EXPIRED JWT ERROR
+// ------------------------------
+const dbJWTExpiredErrorResponse = (err) => {
     const message = "Token has expired. Please sign-in again.";
     const appError = new AppError(message, 401);
-
     return appError;
 };
-
+// ------------------------------------------------------------
+// MARK: - ERROR DISPATCH HANDLER (DEV)
+// ------------------------------------------------------------
 const sendErrorDev = (err, req, res) => {
     if (req.originalUrl.startsWith("/api")) {
         return res.status(err.statusCode).json({
@@ -45,8 +58,14 @@ const sendErrorDev = (err, req, res) => {
             stack: err.stack
         });
     }
+    res.status(err.statusCode).render("error", {
+        title: "Internal Server Error",
+        message: err.message
+    });
 };
-
+// ------------------------------------------------------------
+// MARK: - ERROR DISPATCH HANDLER (PROD)
+// ------------------------------------------------------------
 const sendErrorProd = (err, req, res) => {
     if (req.originalUrl.startsWith("/api")) {
         if (err.isOperational) {
@@ -55,18 +74,30 @@ const sendErrorProd = (err, req, res) => {
                 message: err.message
             });
         }
-
         console.log("[ERROR] 💥", err);
-
         return res.status(500).json({
             status: "error",
             message: "Something went wrong"
         });
     }
 
-    console.log("[ERROR] 💥", err);
-};
+    if (err.isOperational) {
+        return res.status(err.statusCode).render("error", {
+            title: "Internal Server Error",
+            message: err.message
+        });
+    }
 
+    console.log("[ERROR] 💥", err);
+
+    res.status(err.statusCode).render("error", {
+        title: "Internal Server Error",
+        message: "Please try again later."
+    });
+};
+// ------------------------------------------------------------
+// MARK: - MODULE EXPORT
+// ------------------------------------------------------------
 module.exports = (err, req, res, next) => {
     err.statusCode = err.statusCode || 500;
     err.status = err.status || "error";
@@ -91,11 +122,11 @@ module.exports = (err, req, res, next) => {
         }
 
         if (error.name === "JsonWebTokenError") {
-            error = dbJWTTokenErrorResponse(error);
+            error = dbJWTErrorResponse(error);
         }
 
         if (error.name === "TokenExpiredError") {
-            error = dbJWTTokenExpiredErrorResponse(error);
+            error = dbJWTExpiredErrorResponse(error);
         }
 
         sendErrorProd(error, req, res);

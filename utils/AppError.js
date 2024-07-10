@@ -1,3 +1,6 @@
+// ------------------------------------------------------------
+// MARK: - CLASS DECLARATION
+// ------------------------------------------------------------
 class AppError extends Error {
     constructor(message, statusCode) {
         super(message);
@@ -11,5 +14,7 @@ class AppError extends Error {
         Error.captureStackTrace(this, this.constructor);
     }
 }
-
+// ------------------------------------------------------------
+// MARK: - MODULE EXPORT
+// ------------------------------------------------------------
 module.exports = AppError;

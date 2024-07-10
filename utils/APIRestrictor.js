@@ -1,6 +1,11 @@
+// ------------------------------------------------------------
+// MARK: - MODULE INJECTION
+// ------------------------------------------------------------
 const jwt = require("jsonwebtoken");
 const AppError = require("./AppError");
-
+// ------------------------------------------------------------
+// MARK: - CLASS DECLARATION
+// ------------------------------------------------------------
 class APIRestrictor {
     static restrictTo(...roles) {
         return (req, res, next) => {
@@ -30,8 +35,8 @@ class APIRestrictor {
                 (err, decoded) => {
                     if (err) return res.sendStatus(403);
 
-                    req.verifiedEmail = decoded.email;
-                    req.verifiedRole = decoded.role;
+                    req.user = decoded.email;
+                    req.role = decoded.role;
 
                     next();
                 }
@@ -39,5 +44,7 @@ class APIRestrictor {
         };
     }
 }
-
+// ------------------------------------------------------------
+// MARK: - MODULE EXPORT
+// ------------------------------------------------------------
 module.exports = APIRestrictor;
