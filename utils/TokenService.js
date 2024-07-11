@@ -6,8 +6,8 @@ const User = require("../models/User");
 // ------------------------------------------------------------
 // MARK: - PROPERTIES
 // ------------------------------------------------------------
-const accessTokenExpireTime = "5s";
-const refreshTokenExpireTime = "10s";
+const accessTokenExpireTime = "16h";
+const refreshTokenExpireTime = "1d";
 // ------------------------------------------------------------
 // MARK: - CLASS DECLARATION
 // ------------------------------------------------------------
