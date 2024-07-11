@@ -89,7 +89,7 @@ app.use(compression());
 // ------------------------------------------------------------
 // MARK: - ROUTE MOUNTING
 // ------------------------------------------------------------
-app.use("/", viewRouter);
+// app.use("/", viewRouter);
 app.use("/api/v1/auth", authRouter);
 // ------------------------------------------------------------
 // MARK: - UNEXPECTED ERROR HANDLING

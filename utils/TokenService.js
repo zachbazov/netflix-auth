@@ -6,8 +6,8 @@ const User = require("../models/User");
 // ------------------------------------------------------------
 // MARK: - PROPERTIES
 // ------------------------------------------------------------
-const accessTokenExpireTime = "12h";
-const refreshTokenExpireTime = "1d";
+const accessTokenExpireTime = "5s";
+const refreshTokenExpireTime = "10s";
 // ------------------------------------------------------------
 // MARK: - CLASS DECLARATION
 // ------------------------------------------------------------
@@ -16,7 +16,6 @@ class TokenService {
     // SET COOKIE HANDLER
     // ------------------------------
     static async setCookie(res, token, refreshToken) {
-        console.log("setCookie");
         res.cookie("jwt", token, {
             httpOnly: true,
             sameSite: "None",
@@ -34,7 +33,6 @@ class TokenService {
     // REMOVE COOKIE HANDLER
     // ------------------------------
     static async removeCookie(res) {
-        console.log("removeCookie");
         await res.clearCookie("jwt", {
             httpOnly: true,
             sameSite: "None",
@@ -55,16 +53,13 @@ class TokenService {
             process.env.REFRESH_TOKEN_SECRET,
             async (err, decoded) => {
                 if (err) return res.sendStatus(403);
-
                 const foundUser = await User.findOne({
                     email: decoded.email
                 });
-
                 const contains = await containsValue(
                     foundUser.refreshToken,
                     refreshToken
                 );
-
                 if (contains)
                     deleteValue(foundUser.refreshToken, refreshToken);
             }
@@ -89,14 +84,13 @@ class TokenService {
             process.env.REFRESH_TOKEN_SECRET,
             { expiresIn: refreshTokenExpireTime }
         );
-        console.log("t", t);
         return t;
     }
 }
 // ------------------------------------------------------------
 // MARK: - PRIVATE METHODS
 // ------------------------------------------------------------
-const constainsValue = async (array, value) => {
+const containsValue = async (array, value) => {
     return await array.includes(value);
 };
 const deleteValue = async (array, value) => {

@@ -18,7 +18,6 @@ const dbCastErrorResponse = (err) => {
 const dbValidationErrorResponse = (err) => {
     const message = `Invalid ${err.path}: ${err.value}.`;
     const appError = new AppError(message, 400); // Bad Request - 400
-
     return appError;
 };
 // ------------------------------
@@ -58,7 +57,8 @@ const sendErrorDev = (err, req, res) => {
             stack: err.stack
         });
     }
-    res.status(err.statusCode).render("error", {
+
+    res.status(err.statusCode).json({
         title: "Internal Server Error",
         message: err.message
     });
@@ -67,6 +67,7 @@ const sendErrorDev = (err, req, res) => {
 // MARK: - ERROR DISPATCH HANDLER (PROD)
 // ------------------------------------------------------------
 const sendErrorProd = (err, req, res) => {
+    console.log(321);
     if (req.originalUrl.startsWith("/api")) {
         if (err.isOperational) {
             return res.status(err.statusCode).json({
@@ -82,7 +83,7 @@ const sendErrorProd = (err, req, res) => {
     }
 
     if (err.isOperational) {
-        return res.status(err.statusCode).render("error", {
+        return res.status(err.statusCode).json({
             title: "Internal Server Error",
             message: err.message
         });
@@ -90,7 +91,7 @@ const sendErrorProd = (err, req, res) => {
 
     console.log("[ERROR] 💥", err);
 
-    res.status(err.statusCode).render("error", {
+    res.status(err.statusCode).json({
         title: "Internal Server Error",
         message: "Please try again later."
     });
